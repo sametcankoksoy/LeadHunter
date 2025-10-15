@@ -1,0 +1,9 @@
+streamlit
+fastapi
+httpx
+requests
+pydantic
+uvicorn
+pandas
+plotly
+streamlit-aggrid
