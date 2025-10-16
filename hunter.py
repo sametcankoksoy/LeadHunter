@@ -1,5 +1,5 @@
-import httpx
 import asyncio
+import httpx
 
 async def verify_email(email, api_key):
     url = "https://api.hunter.io/v2/email-verifier"

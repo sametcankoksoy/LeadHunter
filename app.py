@@ -1,13 +1,19 @@
-import streamlit as st
-import pandas as pd
-import asyncio
-import json
+from hubspot import push_contacts_async, push_companies_async, push_people_to_companies_async
+from apollo_organizations import search_organizations, get_organization_top_people
+from hunter import verify_contacts_async
+from utils import extract_contact_info
+from apollo import fetch_contacts
 from typing import List, Optional
-import requests
-import httpx
+import plotly.graph_objects as go
+from models import FetchRequest
 from datetime import datetime
 import plotly.express as px
-import plotly.graph_objects as go
+import streamlit as st
+import pandas as pd
+import requests
+import asyncio
+import httpx
+import json
 
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder
@@ -17,23 +23,14 @@ except ImportError:
     AGGrid_AVAILABLE = False
     st.warning("streamlit_aggrid not available. Using basic table display.")
 
-# Import our existing modules
-from models import FetchRequest, NLQuery
-from apollo import fetch_contacts
-from apollo_organizations import search_organizations, get_organization_top_people
-from hunter import verify_contacts_async
-from hubspot import push_contacts_async, push_companies_async, push_people_to_companies_async
-from utils import extract_contact_info
 
-# Page configuration
 st.set_page_config(
-    page_title="Lead Researcher Pro",
-    page_icon="🔍",
+    page_title="Lead Hunter",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
 st.markdown("""
 <style>
     .main-header {
@@ -98,7 +95,6 @@ def save_api_keys():
     }
 
 def load_api_keys():
-    """Load API keys from session state"""
     return st.session_state.api_keys
 
 def create_contact_dataframe(contacts: List[dict]) -> pd.DataFrame:
@@ -107,7 +103,6 @@ def create_contact_dataframe(contacts: List[dict]) -> pd.DataFrame:
         return pd.DataFrame()
     
     df = pd.DataFrame(contacts)
-    # Select and rename columns for display
     display_columns = {
         'first_name': 'First Name',
         'last_name': 'Last Name',
@@ -156,7 +151,6 @@ def display_contact_visualizations(contacts: List[dict]):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Email verification status pie chart
         verification_status = {}
         for contact in contacts:
             status = contact.get('hunter_result', 'Unknown')
@@ -171,7 +165,6 @@ def display_contact_visualizations(contacts: List[dict]):
             st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Top organizations bar chart
         org_counts = {}
         for contact in contacts:
             org = contact.get('organization', 'Unknown')
@@ -179,7 +172,6 @@ def display_contact_visualizations(contacts: List[dict]):
                 org_counts[org] = org_counts.get(org, 0) + 1
         
         if org_counts:
-            # Get top 10 organizations
             top_orgs = dict(sorted(org_counts.items(), key=lambda x: x[1], reverse=True)[:10])
             fig = px.bar(
                 x=list(top_orgs.values()),
@@ -193,29 +185,13 @@ def display_contact_visualizations(contacts: List[dict]):
 def main():
     initialize_session_state()
     
-    # Main content starts here
-    
-    # Sidebar for navigation and API keys
     with st.sidebar:
-        # Header with logo
-        st.markdown("""
-        <div style="text-align: center; padding: 1rem 0;">
-            <h2 style="color: #1f77b4; margin: 0;">🔍 Lead Researcher Pro</h2>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-size: 0.9rem;">Professional Lead Generation</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Navigation
+          
         st.subheader("🧭 Search Methods")
 
-        
-        # Create navigation with icons and descriptions
         nav_options = {
             "🏢 Organization Search": "Search companies and get their key people",
             "🎯 Contact Search": "Advanced contact search with filters", 
-            "🤖 AI Search": "Natural language contact queries",
             "📊 Results & Export": "View and export your data",
             "📈 Analytics": "Insights and visualizations"
         }
@@ -228,7 +204,6 @@ def main():
         
         st.markdown("---")
         
-        # API Keys section
         st.subheader("🔑 API Configuration")
         
         with st.expander("🔧 API Keys", expanded=True):
@@ -253,12 +228,10 @@ def main():
                 help="Your HubSpot API key for CRM integration"
             )
             
-            # Save API keys to session state
             st.session_state.apollo_key = apollo_key
             st.session_state.hunter_key = hunter_key
             st.session_state.hubspot_key = hubspot_key
             
-            # API Status indicators
             st.markdown("**API Status:**")
             col1, col2, col3 = st.columns(3)
             
@@ -282,7 +255,6 @@ def main():
         
         st.markdown("---")
         
-        # Quick stats
         if 'organizations_data' in st.session_state and st.session_state.organizations_data:
             st.subheader("📊 Session Stats")
             st.metric("Organizations Found", len(st.session_state.organizations_data))
@@ -293,13 +265,10 @@ def main():
             if total_people > 0:
                 st.metric("People Discovered", total_people)
     
-    # Main content area
     if selected_page == "🏢 Organization Search":
         organization_search_page()
     elif selected_page == "🎯 Contact Search":
         contact_search_page()
-    elif selected_page == "🤖 AI Search":
-        nl_search_page()
     elif selected_page == "📊 Results & Export":
         results_page()
     elif selected_page == "📈 Analytics":
@@ -309,9 +278,8 @@ def organization_search_page():
     """Organization search page"""
     st.header("🏢 Organization Search")
     
-    st.info("🎉 Search for companies and discover their key decision makers. Perfect for B2B lead generation!")
+
     
-    # Quick action buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("🚀 Quick Start Guide"):
@@ -367,7 +335,6 @@ def organization_search_page():
         with col2:
             st.subheader("Filters")
             
-            # Organization industries
             industry_options = [
                 "Technology", "Software", "SaaS", "Fintech", "Healthcare", "Biotech",
                 "Education", "E-learning", "Finance", "Banking", "Insurance",
@@ -375,7 +342,7 @@ def organization_search_page():
                 "Media", "Entertainment", "Gaming", "Marketing", "Advertising",
                 "Consulting", "Legal", "Government", "Non-profit", "Energy"
             ]
-            
+
             selected_industries = st.multiselect(
                 "Select Industries", 
                 options=industry_options, 
@@ -383,7 +350,6 @@ def organization_search_page():
                 help="Select industries to filter organizations by"
             )
             
-            # Organization locations
             location_options = [
                 "San Francisco", "New York", "Los Angeles", "Chicago", "Boston", "Seattle",
                 "Austin", "Denver", "Miami", "Atlanta", "Dallas", "Houston", "Phoenix",
@@ -397,7 +363,6 @@ def organization_search_page():
                 help="Select geographic locations to filter by"
             )
             
-            # Company sizes
             size_options = [
                 "1-10", "11-50", "51-200", "201-500", "501-1000", 
                 "1001-5000", "5001-10000", "10000+"
@@ -444,13 +409,11 @@ def organization_search_page():
             except Exception as e:
                 st.error(f"Error searching for organizations: {str(e)}")
     
-    # Display organizations
     if 'organizations_data' in st.session_state and st.session_state.organizations_data:
         organizations = st.session_state.organizations_data
         
         st.markdown("---")
         
-        # HubSpot integration buttons
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -461,7 +424,6 @@ def organization_search_page():
                         successful = len([r for r in hubspot_results if 'error' not in r])
                         st.success(f"✅ Pushed {successful} organizations to HubSpot!")
                         
-                        # Store company IDs for future use
                         st.session_state.hubspot_company_ids = []
                         for result in hubspot_results:
                             if 'error' not in result and result.get('id'):
@@ -489,7 +451,6 @@ def organization_search_page():
         st.markdown("---")
         st.subheader("📊 Found Organizations")
         
-        # Display organizations in a nice format
         for i, org in enumerate(organizations):
             with st.expander(f"🏢 {org.get('name', 'Unknown Company')}"):
                 col1, col2 = st.columns(2)
@@ -507,7 +468,6 @@ def organization_search_page():
                     if org.get('phone'):
                         st.write(f"**Phone:** {org['phone']}")
                 
-                # Buttons for getting people and HubSpot integration
                 col_btn1, col_btn2, col_btn3 = st.columns(3)
                 
                 with col_btn1:
@@ -519,13 +479,11 @@ def organization_search_page():
                                     organization_id=org['id']
                                 )
                                 
-                                # Store people in session state for this organization
                                 st.session_state[f"people_{org['id']}"] = people
                                 
                                 if people:
                                     st.success(f"Found {len(people)} top people!")
                                     
-                                    # Display people
                                     for person in people:
                                         st.write(f"• **{person.get('first_name', '')} {person.get('last_name', '')}** - {person.get('title', 'N/A')}")
                                         if person.get('email'):
@@ -538,7 +496,6 @@ def organization_search_page():
                             except Exception as e:
                                 st.error(f"Error getting top people: {str(e)}")
                 
-                # Show people if already loaded
                 if f"people_{org['id']}" in st.session_state:
                     people = st.session_state[f"people_{org['id']}"]
                     if people:
@@ -550,12 +507,10 @@ def organization_search_page():
                             if person.get('linkedin_url'):
                                 st.write(f"  🔗 [LinkedIn]({person['linkedin_url']})")
                         
-                        # HubSpot integration for people
                         with col_btn2:
                             if st.button(f"📤 Push People to HubSpot", key=f"push_people_{i}", disabled=not st.session_state.get('hubspot_key')):
                                 with st.spinner("Pushing people to HubSpot..."):
                                     try:
-                                        # Find corresponding HubSpot company ID
                                         hubspot_company_id = None
                                         if 'hubspot_company_ids' in st.session_state and i < len(st.session_state.hubspot_company_ids):
                                             hubspot_company_id = st.session_state.hubspot_company_ids[i]
@@ -565,7 +520,6 @@ def organization_search_page():
                                             successful = len([r for r in results if 'error' not in r])
                                             st.success(f"✅ Pushed {successful} people to HubSpot and linked to company!")
                                         else:
-                                            # Push people without company association
                                             results = asyncio.run(push_contacts_async(people, st.session_state.hubspot_key))
                                             successful = len([r for r in results if 'error' not in r])
                                             st.success(f"✅ Pushed {successful} people to HubSpot!")
@@ -599,10 +553,10 @@ def contact_search_page():
         5. **Common titles**: "Manager", "Director", "CEO"
         
         **Example searches:**
-        - Keywords: "engineer" (no filters)
-        - Keywords: "manager" (no filters)
-        - Keywords: "CEO" (no filters)
-        - Keywords: "founder" (no filters)
+        - Keywords: "Engineer" 
+        - Keywords: "Manager" 
+        - Keywords: "CEO" 
+        - Keywords: "Founder" 
         
         **If still no results:**
         - Try without any filters first
@@ -618,7 +572,7 @@ def contact_search_page():
             
             q_keywords = st.text_input(
                 "Keywords",
-                placeholder="e.g., software engineer, marketing manager",
+                placeholder="e.g., Software engineer, Marketing manager",
                 help="Keywords to search for in contact profiles"
             )
             
@@ -793,45 +747,6 @@ def contact_search_page():
                 # Reset search flag after processing
                 st.session_state.search_submitted = False
 
-def nl_search_page():
-    """Natural language search page"""
-    st.header("🤖 Natural Language Search")
-    st.markdown("Ask for contacts in natural language and let AI parse your request.")
-    
-    with st.form("nl_search_form"):
-        nl_query = st.text_area(
-            "Natural Language Query",
-            placeholder="e.g., Find 20 software engineers at tech startups in San Francisco with 10-50 employees",
-            height=100,
-            help="Describe what kind of contacts you're looking for in natural language"
-        )
-        
-        nl_total_records = st.number_input(
-            "Number of Contacts",
-            min_value=1,
-            max_value=100,
-            value=10
-        )
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            nl_submitted = st.form_submit_button(
-                "🤖 Parse & Search",
-                use_container_width=True,
-                type="primary"
-            )
-    
-    if nl_submitted:
-        if not st.session_state.get('apollo_key'):
-            st.error("Please enter your Apollo API key in the sidebar.")
-            return
-        
-        if not nl_query:
-            st.error("Please enter a natural language query.")
-            return
-        
-        st.warning("⚠️ Natural language parsing is not yet implemented. Please use the Contact Search page for now.")
-        # TODO: Implement ai_parse_query_to_payload function
 
 def results_page():
     """Results display and export page"""

@@ -1,5 +1,5 @@
-from fastapi import HTTPException
 from utils import extract_contact_info
+from fastapi import HTTPException
 import requests
 
 def fetch_contacts(data):
@@ -13,46 +13,30 @@ def fetch_contacts(data):
         "Cache-Control": "no-cache",
         "Content-Type": "application/json"
     }
-    
-    # Try different API key header formats
-    headers["X-Api-Key"] = data.api_key
-    # Alternative formats if needed:
-    # headers["Authorization"] = f"Bearer {data.api_key}"
-    # headers["apollo-api-key"] = data.api_key
 
+    headers["X-Api-Key"] = data.api_key
     all_contacts = []
     page = data.start_page
     per_page = data.per_page or 1
 
     while len(all_contacts) < data.total_records:
-        # Use Apollo.io's correct parameter names based on documentation
         payload = {
             "page": page,
             "per_page": per_page
         }
         
-        # Use correct Apollo.io parameter names
         if data.q_keywords:
             payload["q_keywords"] = data.q_keywords
-        
         if titles:
-            payload["q_titles"] = titles  # Correct parameter name
-        
+            payload["q_titles"] = titles  
         if keywords:
-            payload["q_organization_keywords"] = keywords  # Correct parameter name
-        
+            payload["q_organization_keywords"] = keywords 
         if locations:
-            payload["q_organization_locations"] = locations  # Correct parameter name
-        
+            payload["q_organization_locations"] = locations 
         if employee_ranges:
-            payload["q_organization_num_employees_ranges"] = employee_ranges  # Correct parameter name
-        
-        # Remove contact_email_status - might not be available in free tier
-        # payload["contact_email_status"] = "verified"
-
+            payload["q_organization_num_employees_ranges"] = employee_ranges  
         try:
             r = requests.post(url, headers=headers, json=payload)
-            
             
             if r.status_code == 401:
                 raise HTTPException(
@@ -69,10 +53,8 @@ def fetch_contacts(data):
                     status_code=429,
                     detail=f"Rate limited: {r.text}. Wait and try again."
                 )
-            
             r.raise_for_status()
             response_data = r.json()
-            
             
         except HTTPException:
             raise

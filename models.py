@@ -1,5 +1,5 @@
-from pydantic import BaseModel
 from typing import Optional, List
+from pydantic import BaseModel
 
 class FetchRequest(BaseModel):
     api_key: str
