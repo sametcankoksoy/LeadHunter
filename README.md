@@ -37,7 +37,7 @@ Fast, modern, and user-friendly interface.
 git clone https://github.com/sametcankoksoy/LeadHunter
 cd LeadHunter
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # On Windows: .venv\scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
 
