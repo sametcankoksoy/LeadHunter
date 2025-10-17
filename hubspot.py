@@ -77,7 +77,6 @@ async def push_company(company, api_key):
         "Content-Type": "application/json"
     }
 
-    # Validate required field
     company_name = company.get("name")
     if not company_name or str(company_name).strip() == "":
         return {"error": "Company name is required", "status": 400, "company": company}
@@ -138,7 +137,7 @@ async def push_company(company, api_key):
                 error_detail = res.text
                 try:
                     error_json = res.json()
-                    error_detail = error_json.get("message", error_detail) # Hata mesajını API'den al
+                    error_detail = error_json.get("message", error_detail)
                     
                     if res.status_code == 401:
                         error_detail = "Invalid HubSpot API Key or token expired. Check Authorization scopes."

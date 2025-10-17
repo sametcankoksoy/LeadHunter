@@ -10,6 +10,7 @@ from datetime import datetime
 import plotly.express as px
 import streamlit as st
 import pandas as pd
+import warnings
 import requests
 import asyncio
 import httpx
@@ -147,40 +148,99 @@ def display_contact_visualizations(contacts: List[dict]):
     """Display visualizations for the contacts data"""
     if not contacts:
         return
-    
-    col1, col2 = st.columns(2)
-    
+    col1, col2 = st.columns([1, 2])
+
     with col1:
         verification_status = {}
         for contact in contacts:
-            status = contact.get('hunter_result', 'Unknown')
-            verification_status[status] = verification_status.get(status, 0) + 1
-        
-        if verification_status:
-            fig = px.pie(
-                values=list(verification_status.values()),
-                names=list(verification_status.keys()),
-                title="Email Verification Status"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    
+            status = contact.get('hunter_result') or None
+            if status:
+                verification_status[status] = verification_status.get(status, 0) + 1
+
+        if not verification_status:
+            pass
+
+        labels = list(verification_status.keys())
+        values = list(verification_status.values())
+
+        total_vals = sum(values)
+        if total_vals != len(contacts) and len(contacts) > 0:
+            factor = len(contacts) / total_vals
+            values = [max(0, int(v * factor)) for v in values]
+
+        import pandas as _pd
+        df_ver = _pd.DataFrame({
+            'status': labels,
+            'count': values
+        })
+
+        color_map = {
+            'deliverable': '#2ECC71',   
+            'risky': '#F1C40F',         
+            'undeliverable': '#E67E22', 
+            'unknown': '#E74C3C'       
+        }
+
+        unique_statuses = df_ver['status'].unique().tolist()
+        for s in unique_statuses:
+            if s not in color_map:
+                color_map[s] = '#95A5A6'
+
+        fig = px.pie(
+            df_ver,
+            names='status',
+            values='count',
+            hole=0.45,
+            title='Email Verification',
+            color='status',
+            color_discrete_map=color_map
+        )
+
+        fig.update_traces(textposition='inside', textinfo='percent')
+
+        if 'deliverable' in df_ver['status'].values and df_ver['count'].sum() > 0:
+            dval = int(df_ver.loc[df_ver['status'] == 'deliverable', 'count'].sum())
+            dpct = dval / df_ver['count'].sum() * 100
+            center_text = f"{dpct:.0f}%\nDeliverable"
+            fig.update_layout(annotations=[dict(text=center_text, x=0.5, y=0.5, font_size=18, showarrow=False)])
+
+        fig.update_layout(
+            template='plotly_dark',
+            margin=dict(l=10, r=10, t=40, b=10),
+            legend=dict(orientation='v', y=0.5, x=1.02)
+        )
+        st.plotly_chart(fig, use_container_width=True, height=360)
+
     with col2:
         org_counts = {}
         for contact in contacts:
-            org = contact.get('organization', 'Unknown')
-            if org and org != 'Unknown':
+            org = contact.get('organization') or 'Unknown'
+            if org:
                 org_counts[org] = org_counts.get(org, 0) + 1
-        
+
         if org_counts:
-            top_orgs = dict(sorted(org_counts.items(), key=lambda x: x[1], reverse=True)[:10])
-            fig = px.bar(
-                x=list(top_orgs.values()),
-                y=list(top_orgs.keys()),
-                orientation='h',
-                title="Top Organizations"
+            top_orgs = sorted(org_counts.items(), key=lambda x: x[1], reverse=True)[:12]
+            org_names = [o[0] for o in top_orgs][::-1]  # reverse for horizontal bar
+            org_values = [o[1] for o in top_orgs][::-1]
+
+            import pandas as _pd
+            df_org = _pd.DataFrame({
+                'organization': org_names,
+                'count': org_values
+            })
+            total_shown = df_org['count'].sum()
+            df_org['percent'] = df_org['count'].apply(lambda v: (v / total_shown * 100) if total_shown else 0)
+
+            fig = px.pie(
+                df_org,
+                names='organization',
+                values='count',
+                hole=0.45,
+                title='Top Organizations (by contact share)'
             )
-            fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
+            fig.update_traces(textposition='inside', textinfo='percent', hovertemplate='%{label}<br>Contacts: %{value}<br>Percent: %{percent}<extra></extra>')
+            fig.update_layout(template='plotly_dark', margin=dict(l=10, r=200, t=40, b=20))
+            st.plotly_chart(fig, use_container_width=True, height=420)
 
 def main():
     initialize_session_state()
@@ -602,7 +662,6 @@ def contact_search_page():
         with col2:
             st.subheader("Filters")
 
-            # Person titles (multi-select)
             job_titles = [
                 "CEO", "CTO", "CFO", "COO", "President", "Vice President",
                 "Manager", "Project Manager", "Director", "Senior Director",
@@ -623,7 +682,6 @@ def contact_search_page():
             )
             person_titles = selected_titles if selected_titles else None
             
-            # Organization keywords (multi-select)
             industry_keywords = [
                 "Technology", "Software", "SaaS", "Fintech", "Healthcare", "Biotech",
                 "Education", "E-learning", "Finance", "Banking", "Insurance",
@@ -642,7 +700,6 @@ def contact_search_page():
             )
             org_keywords = selected_industries if selected_industries else None
             
-            # Organization locations (multi-select)
             common_locations = [
                 "San Francisco", "New York", "Los Angeles", "Chicago", "Boston", "Seattle",
                 "Austin", "Denver", "Miami", "Atlanta", "Dallas", "Houston", "Phoenix",
@@ -659,7 +716,6 @@ def contact_search_page():
             )
             org_locations = selected_locations if selected_locations else None
             
-            # Employee ranges (multi-select)
             company_sizes = [
                 "1-10", "11-50", "51-200", "201-500", "501-1000", 
                 "1001-5000", "5001-10000", "10000+"
@@ -683,12 +739,10 @@ def contact_search_page():
                 type="primary"
             )
         
-        # Clear previous search results when form is submitted
         if search_submitted:
             st.session_state.search_submitted = True
             st.session_state.contacts_data = []  # Clear previous results
     
-    # Only process search if form was actually submitted (not on page reload)
     if search_submitted and st.session_state.search_submitted:
         if not st.session_state.get('apollo_key'):
             st.error("Please enter your Apollo API key in the sidebar.")
@@ -700,14 +754,12 @@ def contact_search_page():
             st.session_state.search_submitted = False  # Reset flag
             return
         
-        # Show search tips for better results
         if len(selected_titles) > 3 or len(selected_industries) > 3 or len(selected_locations) > 3:
             st.warning("⚠️ Too many filters selected. Try reducing filters for better results.")
         
         if total_records > 50:
             st.info("💡 For better results, try searching with fewer records first (1-10), then increase if needed.")
         
-        # Create search request
         search_request = FetchRequest(
             api_key=st.session_state.apollo_key,
             total_records=total_records,
@@ -725,7 +777,6 @@ def contact_search_page():
                 contacts = fetch_contacts(search_request)
                 st.session_state.contacts_data = contacts
                 
-                # Add to search history
                 search_entry = {
                     'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'query': q_keywords,
@@ -744,25 +795,21 @@ def contact_search_page():
             except Exception as e:
                 st.error(f"Error searching for contacts: {str(e)}")
             finally:
-                # Reset search flag after processing
                 st.session_state.search_submitted = False
 
 
 def results_page():
     """Results display and export page"""
     st.header("📊 Search Results")
-    
-    contacts = st.session_state.contacts_data
+    contacts = st.session_state.get('contacts_data', [])
     
     if not contacts:
         st.info("No contacts found. Please perform a search first.")
         return
     
-    # Display metrics
     display_contact_metrics(contacts)
     st.markdown("---")
     
-    # Options for verification and HubSpot integration
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -790,21 +837,18 @@ def results_page():
     
     st.markdown("---")
     
-    # Display contacts in an interactive table
     if contacts:
         df = create_contact_dataframe(contacts)
         
         if not df.empty:
             if AGGrid_AVAILABLE:
-                # Configure AgGrid
                 gb = GridOptionsBuilder.from_dataframe(df)
                 gb.configure_pagination(paginationAutoPageSize=True)
                 gb.configure_side_bar()
-                gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren="Group checkbox select children")
+                gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren=True)
                 gb.configure_default_column(enablePivot=True, enableValue=True, enableRowGroup=True)
                 gridOptions = gb.build()
                 
-                # Display the grid
                 grid_response = AgGrid(
                     df,
                     gridOptions=gridOptions,
@@ -816,7 +860,6 @@ def results_page():
                     height=400
                 )
             else:
-                # Use basic Streamlit dataframe display
                 st.subheader("📋 Contacts Data")
                 st.dataframe(
                     df,
@@ -824,7 +867,6 @@ def results_page():
                     height=400
                 )
             
-            # Export functionality
             st.markdown("### 📥 Export Data")
             col1, col2, col3 = st.columns(3)
             
@@ -862,19 +904,31 @@ def results_page():
 def analytics_page():
     """Analytics and insights page"""
     st.header("📈 Analytics & Insights")
-    
+
     contacts = st.session_state.contacts_data
-    
+
     if not contacts:
-        st.info("No contacts found. Please perform a search first.")
+        st.info("No contacts found. Please perform a search first. Or load the mock CSV from Results & Export.")
         return
-    
-    # Display visualizations
-    display_contact_visualizations(contacts)
-    
+
+    total_contacts = len(contacts)
+    verified_count = len([c for c in contacts if c.get('hunter_result') == 'deliverable'])
+    unique_orgs = len(set([c.get('organization') for c in contacts if c.get('organization')]))
+    scores = [c.get('hunter_score') for c in contacts if isinstance(c.get('hunter_score'), (int, float))]
+    avg_score = (sum(scores) / len(scores)) if scores else None
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Contacts", f"{total_contacts}")
+    k2.metric("Verified Emails", f"{verified_count}")
+    k3.metric("Unique Organizations", f"{unique_orgs}")
+    k4.metric("Avg Verification Score", f"{avg_score:.1f}" if avg_score is not None else "N/A")
+
     st.markdown("---")
-    
-    # Search history
+
+    display_contact_visualizations(contacts)
+
+    st.markdown("---")
+
     st.subheader("🔍 Search History")
     if st.session_state.search_history:
         history_df = pd.DataFrame(st.session_state.search_history)
